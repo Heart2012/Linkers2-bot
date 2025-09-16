@@ -1,8 +1,10 @@
 import os
+import json
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 # ================== Налаштування ==================
@@ -41,11 +43,31 @@ CHANNELS = [
     {"name": "⚡️ОПЕРАТИВНІ НОВИНИ УКРАЇНИ 24/7⚡️", "id": -1002666646029},
 ]
 
-bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+# Файл для збереження
+LINKS_FILE = "links.json"
+
+# Створюємо бота
+bot = Bot(
+    token=API_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
 
 
-# ================== Хендлер ==================
+# ================== Робота з JSON ==================
+def load_links():
+    if os.path.exists(LINKS_FILE):
+        with open(LINKS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def save_links(links):
+    with open(LINKS_FILE, "w", encoding="utf-8") as f:
+        json.dump(links, f, ensure_ascii=False, indent=2)
+
+
+# ================== Хендлери ==================
 @dp.message(Command("newlink"))
 async def new_link(message: Message):
     """Створює постійні закриті лінки із заявкою"""
@@ -59,11 +81,27 @@ async def new_link(message: Message):
                 name=link_name,
                 creates_join_request=True  # ❗️ постійна закрита заявка
             )
-            created_links.append(f"{ch['name']} → {invite.invite_link}")
+            created_links.append({"name": ch["name"], "url": invite.invite_link})
         except Exception as e:
-            created_links.append(f"❌ {ch['name']} → {e}")
+            created_links.append({"name": ch["name"], "url": f"❌ {e}"})
 
-    text = "🔗 Постійні закриті лінки із заявкою:\n\n" + "\n".join(created_links)
+    save_links(created_links)
+
+    text = "🔗 Постійні закриті лінки із заявкою:\n\n"
+    text += "\n".join([f"{item['name']} → {item['url']}" for item in created_links])
+    await message.answer(text)
+
+
+@dp.message(Command("alllinks"))
+async def all_links(message: Message):
+    """Показує всі збережені лінки"""
+    saved = load_links()
+    if not saved:
+        await message.answer("ℹ️ Лінків ще немає")
+        return
+
+    text = "📂 Усі збережені лінки:\n\n"
+    text += "\n".join([f"{item['name']} → {item['url']}" for item in saved])
     await message.answer(text)
 
 
