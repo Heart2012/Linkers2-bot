@@ -9,8 +9,8 @@ from aiogram.enums import ParseMode
 
 # ================== Настройки ==================
 API_TOKEN = os.getenv("API_TOKEN")
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]           # ID админов
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Канал для публикации
+ADMINS = [int(os.getenv("ADMIN_ID", 0))]
+OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))
 
 if not API_TOKEN or not OUTPUT_CHANNEL_ID:
     print("❌ Установите API_TOKEN и OUTPUT_CHANNEL_ID в Render → Environment")
@@ -62,10 +62,18 @@ def save_links(links):
     with open(LINKS_FILE, "w", encoding="utf-8") as f:
         json.dump(links, f, ensure_ascii=False, indent=2)
 
+# ================== Форматирование ==================
+def format_links(links_list):
+    lines = []
+    for i in range(0, len(links_list), 3):
+        group = links_list[i:i+3]
+        line = " | ".join([f"{item['name']} → {item['url']}" for item in group])
+        lines.append(line)
+    return "\n".join(lines)
+
 # ================== Хендлеры ==================
 @dp.message(Command("newlink"))
 async def new_link(message: Message):
-    """Создаёт постоянные закрытые ссылки с заявкой"""
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У вас нет прав для создания ссылок")
         return
@@ -78,7 +86,7 @@ async def new_link(message: Message):
             invite = await bot.create_chat_invite_link(
                 chat_id=ch["id"],
                 name=link_name,
-                creates_join_request=True   # ❗️ Закрытая ссылка с заявкой
+                creates_join_request=True
             )
             created_links.append({"name": ch["name"], "url": invite.invite_link})
         except Exception as e:
@@ -86,30 +94,24 @@ async def new_link(message: Message):
 
     save_links(created_links)
 
-    # Формируем сообщение для администратора
     text = "🔗 Постійні закриті лінки із заявкою:\n\n"
-    text += "\n".join([f"{item['name']} → {item['url']}" for item in created_links])
+    text += format_links(created_links)
     await message.answer(text)
-
-    # Публикуем в общий канал
     await bot.send_message(OUTPUT_CHANNEL_ID, text)
-
 
 @dp.message(Command("alllinks"))
 async def all_links(message: Message):
-    """Показывает все сохранённые ссылки"""
     saved = load_links()
     if not saved:
         await message.answer("ℹ️ Лінків ще немає")
         return
 
     text = "📂 Усі збережені лінки:\n\n"
-    text += "\n".join([f"{item['name']} → {item['url']}" for item in saved])
+    text += format_links(saved)
     await message.answer(text)
 
 # ================== Запуск ==================
 async def main():
-    # ❗️ Удаляем webhook, чтобы polling заработал
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook видалено, запускаємо polling...")
     await dp.start_polling(bot)
