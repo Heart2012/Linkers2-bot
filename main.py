@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types
 # -------------------- Настройки --------------------
 API_TOKEN = os.getenv("API_TOKEN")
 OUTPUT_CHANNEL_ID = os.getenv("OUTPUT_CHANNEL_ID")
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]  # ID админов через переменные окружения
+ADMINS = [int(os.getenv("ADMIN_ID", 0))]
 
 if not API_TOKEN or OUTPUT_CHANNEL_ID is None:
     print("❌ Ошибка: не заданы API_TOKEN или OUTPUT_CHANNEL_ID")
@@ -19,7 +19,7 @@ dp = Dispatcher()
 
 LINKS_FILE = "links.json"
 
-# -------------------- Список каналов --------------------
+# -------------------- Список каналів --------------------
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -63,17 +63,53 @@ def save_links(links):
 @dp.message()
 async def handle_commands(message: types.Message):
     if message.from_user.id not in ADMINS:
-        return  # Только админы могут использовать бота
+        return
 
     text = message.text or ""
 
-    # ---------------- Показать все ссылки ----------------
-    if text.startswith("/alllinks"):
+    # ---------------- Создание новой ссылки ----------------
+    if text.startswith("/newlink"):
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            await message.answer("❌ Укажи название ссылки. Пример: /newlink Київ/обл.")
+            return
+        link_name = parts[1]
+
+        created_links = []
+        for ch in CHANNELS:
+            try:
+                invite = await bot.create_chat_invite_link(chat_id=ch["id"], name=link_name)
+                created_links.append({"name": ch["name"], "url": invite.invite_link})
+            except Exception as e:
+                await message.answer(f"❌ Не удалось создать ссылку для {ch['name']}: {e}")
+
+        save_links(created_links)
+
+        # ---------------- Формируем текст для вывода ----------------
         output_lines = []
-        for i in range(0, len(CHANNELS), 3):
-            group = CHANNELS[i:i+3]
-            line = " | ".join([f"{item['name']} - https://t.me/c/{str(item['id'])[4:]}" for item in group])
+        for i in range(0, len(created_links), 3):
+            group = created_links[i:i+3]
+            line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
             output_lines.append(line)
+
+        final_message = "\n".join(output_lines)
+
+        await bot.send_message(OUTPUT_CHANNEL_ID, final_message)
+        await message.answer("✅ Все ссылки созданы и опубликованы!")
+
+    # ---------------- Показать все ссылки ----------------
+    elif text.startswith("/alllinks"):
+        saved_links = load_links()
+        if not saved_links:
+            await message.answer("ℹ️ Ссылок пока нет")
+            return
+
+        output_lines = []
+        for i in range(0, len(saved_links), 3):
+            group = saved_links[i:i+3]
+            line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
+            output_lines.append(line)
+
         await message.answer("\n".join(output_lines))
 
 # -------------------- Запуск бота --------------------
