@@ -1,20 +1,16 @@
 import os
 import json
+import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiohttp import web
 
-API_TOKEN = os.getenv("API_TOKEN")
-APP_NAME = os.getenv("APP_NAME")
-PORT = int(os.getenv("PORT", 10000))
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))
+# -------------------- Настройки --------------------
+API_TOKEN = os.getenv("API_TOKEN")          # Токен бота
+ADMINS = [int(os.getenv("ADMIN_ID", 0))]   # ID адмінів
+OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куди відправляти посилання
 
-if not API_TOKEN or not APP_NAME or not OUTPUT_CHANNEL_ID:
-    print("❌ Встановіть API_TOKEN, APP_NAME та OUTPUT_CHANNEL_ID")
+if not API_TOKEN or not OUTPUT_CHANNEL_ID:
+    print("❌ Встановіть API_TOKEN та OUTPUT_CHANNEL_ID")
     exit(1)
-
-WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
-WEBHOOK_URL = f"https://{APP_NAME}.onrender.com{WEBHOOK_PATH}"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -69,6 +65,7 @@ async def handle_commands(message: types.Message):
     text = message.text or ""
     bot_instance = message.bot
 
+    # --- Создание новых ссылок ---
     if text.startswith("/newlink"):
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -86,6 +83,7 @@ async def handle_commands(message: types.Message):
 
         save_links(created_links)
 
+        # --- Формируем сообщение для канала ---
         output_lines = []
         for i in range(0, len(created_links), 3):
             group = created_links[i:i+3]
@@ -96,6 +94,7 @@ async def handle_commands(message: types.Message):
         await bot_instance.send_message(OUTPUT_CHANNEL_ID, final_message)
         await message.answer("✅ Все ссылки созданы и опубликованы!")
 
+    # --- Показать все ссылки ---
     elif text.startswith("/alllinks"):
         saved_links = load_links()
         if not saved_links:
@@ -110,20 +109,14 @@ async def handle_commands(message: types.Message):
 
         await message.answer("\n".join(output_lines))
 
-# -------------------- Запуск Webhook --------------------
-async def on_startup(app: web.Application):
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(WEBHOOK_URL)
-    print(f"Webhook встановлено: {WEBHOOK_URL}")
-
-async def on_shutdown(app: web.Application):
-    await bot.delete_webhook()
-    await bot.session.close()
-
-app = web.Application()
-app.router.add_post(WEBHOOK_PATH, dp.message.middleware)  # aiogram 3.x обробляє webhook автоматично
-app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
+# -------------------- Запуск бота --------------------
+async def main():
+    print("Бот запущен через polling...")
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 if __name__ == "__main__":
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    import asyncio
+    asyncio.run(main())
