@@ -7,14 +7,13 @@ from aiogram.types import Message
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-# ================== Налаштування ==================
+# ================== Настройки ==================
 API_TOKEN = os.getenv("API_TOKEN")
-
 if not API_TOKEN:
     print("❌ Помилка: не вказано API_TOKEN у Render → Environment")
     exit(1)
 
-# Повний список каналів
+# Полный список каналов
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -43,10 +42,10 @@ CHANNELS = [
     {"name": "⚡️ОПЕРАТИВНІ НОВИНИ УКРАЇНИ 24/7⚡️", "id": -1002666646029},
 ]
 
-# Файл для збереження
+# Файл для хранения ссылок
 LINKS_FILE = "links.json"
 
-# Створюємо бота
+# Создаём бота
 bot = Bot(
     token=API_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
@@ -54,7 +53,7 @@ bot = Bot(
 dp = Dispatcher()
 
 
-# ================== Робота з JSON ==================
+# ================== Работа с JSON ==================
 def load_links():
     if os.path.exists(LINKS_FILE):
         with open(LINKS_FILE, "r", encoding="utf-8") as f:
@@ -67,13 +66,13 @@ def save_links(links):
         json.dump(links, f, ensure_ascii=False, indent=2)
 
 
-# ================== Хендлери ==================
+# ================== Хендлеры ==================
 @dp.message(Command("newlink"))
 async def new_link(message: Message):
-    """Створює постійні закриті лінки із заявкою"""
-    link_name = f"Заявка від {message.from_user.full_name}"
-    created_links = []
+    """Создает постоянные закрытые ссылки с заявкой"""
+    link_name = f"Заявка от {message.from_user.full_name}"
 
+    created_links = []
     for ch in CHANNELS:
         try:
             invite = await bot.create_chat_invite_link(
@@ -87,42 +86,32 @@ async def new_link(message: Message):
 
     save_links(created_links)
 
-    # Форматування: по 3 ссылки в строке, последний на отдельной строке
-    text_lines = []
+    # Формируем сообщение: 3 ссылки в строку, последняя на отдельной
+    text = "🔗 Постійні закриті лінки із заявкою:\n\n"
+    lines = []
     for i in range(0, len(created_links), 3):
         group = created_links[i:i+3]
-        if len(group) == 3 or i + 3 < len(created_links):
-            line = " | ".join([f"{item['name']} → {item['url']}" for item in group])
-        else:  # Последняя оставшаяся группа
-            line = f"{group[0]['name']} → {group[0]['url']}"
-            if len(group) > 1:
-                line += "\n" + "\n".join([f"{item['name']} → {item['url']}" for item in group[1:]])
-        text_lines.append(line)
-
-    text = "🔗 Постійні закриті лінки із заявкою:\n\n" + "\n".join(text_lines)
+        line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
+        lines.append(line)
+    text += "\n".join(lines)
     await message.answer(text)
 
 
 @dp.message(Command("alllinks"))
 async def all_links(message: Message):
-    """Показує всі збережені лінки"""
+    """Показывает все сохраненные ссылки"""
     saved = load_links()
     if not saved:
         await message.answer("ℹ️ Лінків ще немає")
         return
 
-    text_lines = []
+    text = "📂 Усі збережені лінки:\n\n"
+    lines = []
     for i in range(0, len(saved), 3):
         group = saved[i:i+3]
-        if len(group) == 3 or i + 3 < len(saved):
-            line = " | ".join([f"{item['name']} → {item['url']}" for item in group])
-        else:
-            line = f"{group[0]['name']} → {group[0]['url']}"
-            if len(group) > 1:
-                line += "\n" + "\n".join([f"{item['name']} → {item['url']}" for item in group[1:]])
-        text_lines.append(line)
-
-    text = "📂 Усі збережені лінки:\n\n" + "\n".join(text_lines)
+        line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
+        lines.append(line)
+    text += "\n".join(lines)
     await message.answer(text)
 
 
