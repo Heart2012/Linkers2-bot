@@ -5,25 +5,25 @@ from aiogram import Bot, Dispatcher, types
 from aiohttp import web
 
 # -------------------- Настройки --------------------
-API_TOKEN = os.getenv("API_TOKEN")          # Токен вашего бота
-APP_NAME = os.getenv("APP_NAME")            # Название Render сервиса
-PORT = int(os.getenv("PORT", 10000))       # Render передает порт в $PORT
+API_TOKEN = os.getenv("API_TOKEN")          # Токен бота
+APP_NAME = os.getenv("APP_NAME")            # Назва Render сервісу
+PORT = int(os.getenv("PORT", 10000))       # Render передає порт у $PORT
 ADMINS = [int(os.getenv("ADMIN_ID", 0))]   # Ваш Telegram ID
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куда отправлять ссылки
+OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куди відправляти посилання
 
 if not API_TOKEN or not APP_NAME or not OUTPUT_CHANNEL_ID:
-    print("❌ Установите API_TOKEN, APP_NAME и OUTPUT_CHANNEL_ID")
+    print("❌ Встановіть API_TOKEN, APP_NAME та OUTPUT_CHANNEL_ID")
     exit(1)
 
 WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"https://{APP_NAME}.onrender.com{WEBHOOK_PATH}"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
 
 LINKS_FILE = "links.json"
 
-# -------------------- Список каналов --------------------
+# -------------------- Список каналів --------------------
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -70,6 +70,7 @@ async def handle_commands(message: types.Message):
         return
 
     text = message.text or ""
+    bot_instance = message.bot  # aiogram 3.x
 
     if text.startswith("/newlink"):
         parts = text.split(maxsplit=1)
@@ -81,7 +82,7 @@ async def handle_commands(message: types.Message):
         created_links = []
         for ch in CHANNELS:
             try:
-                invite = await bot.create_chat_invite_link(chat_id=ch["id"], name=link_name)
+                invite = await bot_instance.create_chat_invite_link(chat_id=ch["id"], name=link_name)
                 created_links.append({"name": ch["name"], "url": invite.invite_link})
             except Exception as e:
                 await message.answer(f"❌ Не удалось создать ссылку для {ch['name']}: {e}")
@@ -95,7 +96,7 @@ async def handle_commands(message: types.Message):
             output_lines.append(line)
 
         final_message = "\n".join(output_lines)
-        await bot.send_message(OUTPUT_CHANNEL_ID, final_message)
+        await bot_instance.send_message(OUTPUT_CHANNEL_ID, final_message)
         await message.answer("✅ Все ссылки созданы и опубликованы!")
 
     elif text.startswith("/alllinks"):
@@ -123,7 +124,7 @@ async def handle_webhook(request):
 async def on_startup(app):
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
-    print(f"Webhook установлен: {WEBHOOK_URL}")
+    print(f"Webhook встановлено: {WEBHOOK_URL}")
 
 async def on_shutdown(app):
     await bot.delete_webhook()
