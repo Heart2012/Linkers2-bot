@@ -72,14 +72,14 @@ def save_links(links):
 async def new_link(message: Message):
     """Створює постійні закриті лінки із заявкою"""
     link_name = f"Заявка від {message.from_user.full_name}"
-
     created_links = []
+
     for ch in CHANNELS:
         try:
             invite = await bot.create_chat_invite_link(
                 chat_id=ch["id"],
                 name=link_name,
-                creates_join_request=True  # ❗️ постійна закрита заявка
+                creates_join_request=True
             )
             created_links.append({"name": ch["name"], "url": invite.invite_link})
         except Exception as e:
@@ -87,8 +87,19 @@ async def new_link(message: Message):
 
     save_links(created_links)
 
-    text = "🔗 Постійні закриті лінки із заявкою:\n\n"
-    text += "\n".join([f"{item['name']} → {item['url']}" for item in created_links])
+    # Форматування: по 3 ссылки в строке, последний на отдельной строке
+    text_lines = []
+    for i in range(0, len(created_links), 3):
+        group = created_links[i:i+3]
+        if len(group) == 3 or i + 3 < len(created_links):
+            line = " | ".join([f"{item['name']} → {item['url']}" for item in group])
+        else:  # Последняя оставшаяся группа
+            line = f"{group[0]['name']} → {group[0]['url']}"
+            if len(group) > 1:
+                line += "\n" + "\n".join([f"{item['name']} → {item['url']}" for item in group[1:]])
+        text_lines.append(line)
+
+    text = "🔗 Постійні закриті лінки із заявкою:\n\n" + "\n".join(text_lines)
     await message.answer(text)
 
 
@@ -100,14 +111,24 @@ async def all_links(message: Message):
         await message.answer("ℹ️ Лінків ще немає")
         return
 
-    text = "📂 Усі збережені лінки:\n\n"
-    text += "\n".join([f"{item['name']} → {item['url']}" for item in saved])
+    text_lines = []
+    for i in range(0, len(saved), 3):
+        group = saved[i:i+3]
+        if len(group) == 3 or i + 3 < len(saved):
+            line = " | ".join([f"{item['name']} → {item['url']}" for item in group])
+        else:
+            line = f"{group[0]['name']} → {group[0]['url']}"
+            if len(group) > 1:
+                line += "\n" + "\n".join([f"{item['name']} → {item['url']}" for item in group[1:]])
+        text_lines.append(line)
+
+    text = "📂 Усі збережені лінки:\n\n" + "\n".join(text_lines)
     await message.answer(text)
 
 
 # ================== Запуск ==================
 async def main():
-    print("✅ Бот запущено через polling (Render Web Service)")
+    print("✅ Бот запущено через polling")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
