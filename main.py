@@ -1,15 +1,13 @@
 import os
 import json
-import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiohttp import web
 
-# -------------------- Настройки --------------------
-API_TOKEN = os.getenv("API_TOKEN")          # Токен бота
-APP_NAME = os.getenv("APP_NAME")            # Назва Render сервісу
-PORT = int(os.getenv("PORT", 10000))       # Render передає порт у $PORT
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]   # Ваш Telegram ID
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куди відправляти посилання
+API_TOKEN = os.getenv("API_TOKEN")
+APP_NAME = os.getenv("APP_NAME")
+PORT = int(os.getenv("PORT", 10000))
+ADMINS = [int(os.getenv("ADMIN_ID", 0))]
+OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))
 
 if not API_TOKEN or not APP_NAME or not OUTPUT_CHANNEL_ID:
     print("❌ Встановіть API_TOKEN, APP_NAME та OUTPUT_CHANNEL_ID")
@@ -68,9 +66,8 @@ def save_links(links):
 async def handle_commands(message: types.Message):
     if message.from_user.id not in ADMINS:
         return
-
     text = message.text or ""
-    bot_instance = message.bot  # aiogram 3.x
+    bot_instance = message.bot
 
     if text.startswith("/newlink"):
         parts = text.split(maxsplit=1)
@@ -113,28 +110,18 @@ async def handle_commands(message: types.Message):
 
         await message.answer("\n".join(output_lines))
 
-# -------------------- Webhook Handler --------------------
-async def handle_webhook(request: web.Request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.update_queue.put(update)  # кладемо update в чергу
-    return web.Response(text="ok")
-
-# -------------------- Запуск aiohttp --------------------
+# -------------------- Запуск Webhook --------------------
 async def on_startup(app: web.Application):
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
     print(f"Webhook встановлено: {WEBHOOK_URL}")
-
-    # Запускаємо фоново обробку update_queue
-    asyncio.create_task(dp.start_polling())
 
 async def on_shutdown(app: web.Application):
     await bot.delete_webhook()
     await bot.session.close()
 
 app = web.Application()
-app.router.add_post(WEBHOOK_PATH, handle_webhook)
+app.router.add_post(WEBHOOK_PATH, dp.message.middleware)  # aiogram 3.x обробляє webhook автоматично
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
 
