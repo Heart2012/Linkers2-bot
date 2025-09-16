@@ -114,19 +114,22 @@ async def handle_commands(message: types.Message):
         await message.answer("\n".join(output_lines))
 
 # -------------------- Webhook Handler --------------------
-async def handle_webhook(request):
+async def handle_webhook(request: web.Request):
     data = await request.json()
     update = types.Update(**data)
-    await dp.process_update(update)
-    return web.Response()
+    await dp.update_queue.put(update)  # кладемо update в чергу
+    return web.Response(text="ok")
 
 # -------------------- Запуск aiohttp --------------------
-async def on_startup(app):
+async def on_startup(app: web.Application):
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(WEBHOOK_URL)
     print(f"Webhook встановлено: {WEBHOOK_URL}")
 
-async def on_shutdown(app):
+    # Запускаємо фоново обробку update_queue
+    asyncio.create_task(dp.start_polling())
+
+async def on_shutdown(app: web.Application):
     await bot.delete_webhook()
     await bot.session.close()
 
