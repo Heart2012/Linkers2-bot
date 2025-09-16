@@ -1,23 +1,18 @@
 import os
-import json
 import asyncio
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher
+from aiogram.filters import Command
+from aiogram.types import Message
+from aiogram.enums import ParseMode
 
-# -------------------- Настройки --------------------
-API_TOKEN = os.getenv("API_TOKEN")          # Токен бота
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]   # ID адмінів
-OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куди відправляти посилання
+# ================== Налаштування ==================
+API_TOKEN = os.getenv("API_TOKEN")
 
-if not API_TOKEN or not OUTPUT_CHANNEL_ID:
-    print("❌ Встановіть API_TOKEN та OUTPUT_CHANNEL_ID")
+if not API_TOKEN:
+    print("❌ Помилка: не вказано API_TOKEN у Render → Environment")
     exit(1)
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
-
-LINKS_FILE = "links.json"
-
-# -------------------- Список каналів --------------------
+# Повний список каналів
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -46,77 +41,36 @@ CHANNELS = [
     {"name": "⚡️ОПЕРАТИВНІ НОВИНИ УКРАЇНИ 24/7⚡️", "id": -1002666646029},
 ]
 
-# -------------------- Работа с JSON --------------------
-def load_links():
-    if os.path.exists(LINKS_FILE):
-        with open(LINKS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
 
-def save_links(links):
-    with open(LINKS_FILE, "w", encoding="utf-8") as f:
-        json.dump(links, f, ensure_ascii=False, indent=2)
 
-# -------------------- Хендлер команд --------------------
-@dp.message()
-async def handle_commands(message: types.Message):
-    if message.from_user.id not in ADMINS:
-        return
-    text = message.text or ""
-    bot_instance = message.bot
+# ================== Хендлер ==================
+@dp.message(Command("newlink"))
+async def new_link(message: Message):
+    """Створює постійні закриті лінки із заявкою"""
+    link_name = f"Заявка від {message.from_user.full_name}"
 
-    # --- Создание новых ссылок ---
-    if text.startswith("/newlink"):
-        parts = text.split(maxsplit=1)
-        if len(parts) < 2:
-            await message.answer("❌ Укажи название ссылки. Пример: /newlink Київ/обл.")
-            return
-        link_name = parts[1]
+    created_links = []
+    for ch in CHANNELS:
+        try:
+            invite = await bot.create_chat_invite_link(
+                chat_id=ch["id"],
+                name=link_name,
+                creates_join_request=True  # ❗️ постійна закрита заявка
+            )
+            created_links.append(f"{ch['name']} → {invite.invite_link}")
+        except Exception as e:
+            created_links.append(f"❌ {ch['name']} → {e}")
 
-        created_links = []
-        for ch in CHANNELS:
-            try:
-                invite = await bot_instance.create_chat_invite_link(chat_id=ch["id"], name=link_name)
-                created_links.append({"name": ch["name"], "url": invite.invite_link})
-            except Exception as e:
-                await message.answer(f"❌ Не удалось создать ссылку для {ch['name']}: {e}")
+    text = "🔗 Постійні закриті лінки із заявкою:\n\n" + "\n".join(created_links)
+    await message.answer(text)
 
-        save_links(created_links)
 
-        # --- Формируем сообщение для канала ---
-        output_lines = []
-        for i in range(0, len(created_links), 3):
-            group = created_links[i:i+3]
-            line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
-            output_lines.append(line)
-
-        final_message = "\n".join(output_lines)
-        await bot_instance.send_message(OUTPUT_CHANNEL_ID, final_message)
-        await message.answer("✅ Все ссылки созданы и опубликованы!")
-
-    # --- Показать все ссылки ---
-    elif text.startswith("/alllinks"):
-        saved_links = load_links()
-        if not saved_links:
-            await message.answer("ℹ️ Ссылок пока нет")
-            return
-
-        output_lines = []
-        for i in range(0, len(saved_links), 3):
-            group = saved_links[i:i+3]
-            line = " | ".join([f"{item['name']} - {item['url']}" for item in group])
-            output_lines.append(line)
-
-        await message.answer("\n".join(output_lines))
-
-# -------------------- Запуск бота --------------------
+# ================== Запуск ==================
 async def main():
-    print("Бот запущен через polling...")
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
+    print("✅ Бот запущено через polling (Render Web Service)")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
