@@ -2,24 +2,28 @@ import os
 import json
 import asyncio
 from aiogram import Bot, Dispatcher, types
+from aiohttp import web
 
 # -------------------- Настройки --------------------
-API_TOKEN = os.getenv("API_TOKEN")
-OUTPUT_CHANNEL_ID = os.getenv("OUTPUT_CHANNEL_ID")
-ADMINS = [int(os.getenv("ADMIN_ID", 0))]
+API_TOKEN = os.getenv("API_TOKEN")          # Токен вашего бота
+APP_NAME = os.getenv("APP_NAME")            # Название Render сервиса
+PORT = int(os.getenv("PORT", 10000))       # Render передает порт в $PORT
+ADMINS = [int(os.getenv("ADMIN_ID", 0))]   # Ваш Telegram ID
+OUTPUT_CHANNEL_ID = int(os.getenv("OUTPUT_CHANNEL_ID", 0))  # Куда отправлять ссылки
 
-if not API_TOKEN or OUTPUT_CHANNEL_ID is None:
-    print("❌ Ошибка: не заданы API_TOKEN или OUTPUT_CHANNEL_ID")
+if not API_TOKEN or not APP_NAME or not OUTPUT_CHANNEL_ID:
+    print("❌ Установите API_TOKEN, APP_NAME и OUTPUT_CHANNEL_ID")
     exit(1)
 
-OUTPUT_CHANNEL_ID = int(OUTPUT_CHANNEL_ID)
+WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
+WEBHOOK_URL = f"https://{APP_NAME}.onrender.com{WEBHOOK_PATH}"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
 LINKS_FILE = "links.json"
 
-# -------------------- Список каналів --------------------
+# -------------------- Список каналов --------------------
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -67,7 +71,6 @@ async def handle_commands(message: types.Message):
 
     text = message.text or ""
 
-    # ---------------- Создание новой ссылки ----------------
     if text.startswith("/newlink"):
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -85,7 +88,6 @@ async def handle_commands(message: types.Message):
 
         save_links(created_links)
 
-        # ---------------- Формируем текст для вывода ----------------
         output_lines = []
         for i in range(0, len(created_links), 3):
             group = created_links[i:i+3]
@@ -93,11 +95,9 @@ async def handle_commands(message: types.Message):
             output_lines.append(line)
 
         final_message = "\n".join(output_lines)
-
         await bot.send_message(OUTPUT_CHANNEL_ID, final_message)
         await message.answer("✅ Все ссылки созданы и опубликованы!")
 
-    # ---------------- Показать все ссылки ----------------
     elif text.startswith("/alllinks"):
         saved_links = load_links()
         if not saved_links:
@@ -112,15 +112,27 @@ async def handle_commands(message: types.Message):
 
         await message.answer("\n".join(output_lines))
 
-# -------------------- Запуск бота --------------------
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("Webhook удалён, запускаем polling...")
+# -------------------- Webhook Handler --------------------
+async def handle_webhook(request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.process_update(update)
+    return web.Response()
 
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
+# -------------------- Запуск aiohttp --------------------
+async def on_startup(app):
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(WEBHOOK_URL)
+    print(f"Webhook установлен: {WEBHOOK_URL}")
+
+async def on_shutdown(app):
+    await bot.delete_webhook()
+    await bot.session.close()
+
+app = web.Application()
+app.router.add_post(WEBHOOK_PATH, handle_webhook)
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    web.run_app(app, host="0.0.0.0", port=PORT)
