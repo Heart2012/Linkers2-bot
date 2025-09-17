@@ -169,7 +169,9 @@ async def all_links(message: Message):
 # ================== Запуск ==================
 async def main():
     print("✅ Бот запущено через polling")
+    await bot.delete_webhook(drop_pending_updates=True)  # Убираем webhook
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
