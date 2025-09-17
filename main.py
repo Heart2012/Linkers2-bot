@@ -1,11 +1,14 @@
 import os
 import json
 import asyncio
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ================== Настройки ==================
 API_TOKEN = os.getenv("API_TOKEN")
@@ -13,7 +16,6 @@ if not API_TOKEN:
     print("❌ Помилка: не вказано API_TOKEN у Render → Environment")
     exit(1)
 
-# Полный список каналов
 CHANNELS = [
     {"name": "Київ/обл.", "id": -1002497921892},
     {"name": "Харків/обл.", "id": -1002282062694},
@@ -42,7 +44,6 @@ CHANNELS = [
     {"name": "⚡️ОПЕРАТИВНІ НОВИНИ УКРАЇНИ 24/7⚡️", "id": -1002666646029},
 ]
 
-# Файл для хранения ссылок
 LINKS_FILE = "links.json"
 
 # Создаём бота
@@ -51,6 +52,12 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher()
+
+
+# ================== FSM ==================
+class LinkStates(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_confirm = State()
 
 
 # ================== Работа с JSON ==================
@@ -68,10 +75,56 @@ def save_links(links):
 
 # ================== Хендлеры ==================
 @dp.message(Command("newlink"))
-async def new_link(message: Message):
-    """Создает постоянные закрытые ссылки с заявкой"""
-    link_name = f"Заявка от {message.from_user.full_name}"
+async def new_link(message: Message, state: FSMContext):
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        await ask_confirmation(message, state, args[1])
+    else:
+        await message.answer("✍️ Введи название для лінків:")
+        await state.set_state(LinkStates.waiting_for_name)
 
+
+@dp.message(LinkStates.waiting_for_name)
+async def process_name(message: Message, state: FSMContext):
+    link_name = message.text.strip()
+    await ask_confirmation(message, state, link_name)
+
+
+async def ask_confirmation(message: Message, state: FSMContext, link_name: str):
+    """Отправляет запрос на подтверждение"""
+    await state.update_data(link_name=link_name)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Створити", callback_data="confirm_yes")
+    kb.button(text="❌ Скасувати", callback_data="confirm_no")
+    kb.adjust(2)
+
+    await message.answer(
+        f"Ти ввів назву: <b>{link_name}</b>\nПідтвердити створення лінків?",
+        reply_markup=kb.as_markup()
+    )
+    await state.set_state(LinkStates.waiting_for_confirm)
+
+
+@dp.callback_query(LinkStates.waiting_for_confirm, F.data == "confirm_yes")
+async def confirm_yes(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    link_name = data.get("link_name", "Без назви")
+
+    await generate_links(callback.message, link_name)
+    await state.clear()
+    await callback.answer("✅ Лінки створені")
+
+
+@dp.callback_query(LinkStates.waiting_for_confirm, F.data == "confirm_no")
+async def confirm_no(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Створення лінків скасовано")
+    await callback.answer("Скасовано")
+
+
+async def generate_links(message: Message, link_name: str):
+    """Генерация ссылок"""
     created_links = []
     for ch in CHANNELS:
         try:
@@ -86,8 +139,7 @@ async def new_link(message: Message):
 
     save_links(created_links)
 
-    # Формируем сообщение: 3 ссылки в строку, последняя на отдельной
-    text = "🔗 Постійні закриті лінки із заявкою:\n\n"
+    text = f"🔗 Постійні закриті лінки із заявкою <b>{link_name}</b>:\n\n"
     lines = []
     for i in range(0, len(created_links), 3):
         group = created_links[i:i+3]
@@ -99,7 +151,6 @@ async def new_link(message: Message):
 
 @dp.message(Command("alllinks"))
 async def all_links(message: Message):
-    """Показывает все сохраненные ссылки"""
     saved = load_links()
     if not saved:
         await message.answer("ℹ️ Лінків ще немає")
